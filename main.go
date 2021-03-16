@@ -67,9 +67,9 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 
 // getTokenFromWeb uses Config to request a Token.
 // It returns the retrieved Token.
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
+func getTokenFromWeb(config *oauth2.Config, name string) *oauth2.Token {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
+	fmt.Printf(name+" account: Go to the following link in your browser then type the "+
 		"authorization code: \n%v\n", authURL)
 
 	var code string
@@ -86,7 +86,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 
 // tokenCacheFile generates credential file path/filename.
 // It returns the generated credential path/filename.
-func tokenCacheFile() (string, error) {
+func tokenCacheFile(name string) (string, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return "", err
@@ -94,19 +94,19 @@ func tokenCacheFile() (string, error) {
 	tokenCacheDir := filepath.Join(usr.HomeDir, ".credentials")
 	os.MkdirAll(tokenCacheDir, 0700)
 	return filepath.Join(tokenCacheDir,
-		url.QueryEscape("youtube-go-quickstart.json")), err
+		url.QueryEscape(name+".json")), err
 }
 
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
-func getClient(ctx context.Context, config *oauth2.Config) *http.Client {
-	cacheFile, err := tokenCacheFile()
+func getClient(ctx context.Context, config *oauth2.Config, name string) *http.Client {
+	cacheFile, err := tokenCacheFile(name)
 	if err != nil {
 		log.Fatalf("Unable to get path to cached credential file. %v", err)
 	}
 	tok, err := tokenFromFile(cacheFile)
 	if err != nil {
-		tok = getTokenFromWeb(config)
+		tok = getTokenFromWeb(config, name)
 		saveToken(cacheFile, tok)
 	}
 	return config.Client(ctx, tok)
@@ -121,15 +121,20 @@ func main() {
 	}
 
 	// If modifying these scopes, delete your previously saved credentials
-	// at ~/.credentials/youtube-go-quickstart.json
+	// at ~/.credentials/source.json
+	// at ~/.credentials/target.json
 	config, err := google.ConfigFromJSON(b, youtube.YoutubeReadonlyScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
-	client := getClient(ctx, config)
-	service, err := youtube.New(client)
+	sourceClient := getClient(ctx, config, "source")
+	targetClient := getClient(ctx, config, "target")
+	sourceService, err := youtube.New(sourceClient)
+	targetService, err := youtube.New(targetClient)
 
 	handleError(err, "Error creating YouTube client")
 
-	mySubscriptions(ctx, service, []string{"snippet", "contentDetails"})
+	mySubscriptions(ctx, targetService, []string{"snippet", "contentDetails"})
+
+	mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
 }
