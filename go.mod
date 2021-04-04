@@ -3,11 +3,13 @@ module martinbjeldbak.com/youtube-subscriptions-transfer
 go 1.16
 
 require (
-	cloud.google.com/go v0.79.0 // indirect
-	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110 // indirect
-	golang.org/x/oauth2 v0.0.0-20210311163135-5366d9dc1934 // indirect
-	golang.org/x/sys v0.0.0-20210313110737-8e9fff1a3a18 // indirect
-	google.golang.org/api v0.41.0 // indirect
-	google.golang.org/genproto v0.0.0-20210312152112-fc591d9ea70f // indirect
+	cloud.google.com/go v0.81.0 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
+	golang.org/x/net v0.0.0-20210331212208-0fccb6fa2b5c
+	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
+	golang.org/x/sys v0.0.0-20210403161142-5e06dd20ab57 // indirect
+	golang.org/x/text v0.3.6 // indirect
+	google.golang.org/api v0.43.0
 	rsc.io/quote v1.5.2
 )
