@@ -14,8 +14,15 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
 )
+
+type Channel struct {
+	id          string
+	title       string
+	description string
+}
 
 func handleError(err error, message string) {
 	if message == "" {
@@ -26,18 +33,18 @@ func handleError(err error, message string) {
 	}
 }
 
-func mySubscriptions(context context.Context, service *youtube.Service, parts []string) {
+func mySubscriptions(context context.Context, service *youtube.Service, parts []string) ([]*youtube.Subscription, error) {
 	call := service.Subscriptions.List(parts)
 	call.Mine(true)
 
+	var channels = make([]*youtube.Subscription, 0)
+
 	err := call.Pages(context, func(slr *youtube.SubscriptionListResponse) error {
-		for _, item := range slr.Items {
-			fmt.Printf("%v\n", item.Snippet.Title)
-		}
+		channels = append(channels, slr.Items...)
 
 		return nil
 	})
-	handleError(err, "")
+	return channels, err
 }
 
 // saveToken uses a file path to create a file and store the
@@ -67,7 +74,7 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 
 // getTokenFromWeb uses Config to request a Token.
 // It returns the retrieved Token.
-func getTokenFromWeb(config *oauth2.Config, name string) *oauth2.Token {
+func getTokenFromWeb(ctx context.Context, config *oauth2.Config, name string) *oauth2.Token {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 	fmt.Printf(name+" account: Go to the following link in your browser then type the "+
 		"authorization code: \n%v\n", authURL)
@@ -77,7 +84,7 @@ func getTokenFromWeb(config *oauth2.Config, name string) *oauth2.Token {
 		log.Fatalf("Unable to read authorization code %v", err)
 	}
 
-	tok, err := config.Exchange(oauth2.NoContext, code)
+	tok, err := config.Exchange(ctx, code)
 	if err != nil {
 		log.Fatalf("Unable to retrieve token from web %v", err)
 	}
@@ -106,7 +113,7 @@ func getClient(ctx context.Context, config *oauth2.Config, name string) *http.Cl
 	}
 	tok, err := tokenFromFile(cacheFile)
 	if err != nil {
-		tok = getTokenFromWeb(config, name)
+		tok = getTokenFromWeb(ctx, config, name)
 		saveToken(cacheFile, tok)
 	}
 	return config.Client(ctx, tok)
@@ -122,19 +129,52 @@ func main() {
 
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/source.json
-	// at ~/.credentials/target.json
-	config, err := google.ConfigFromJSON(b, youtube.YoutubeReadonlyScope)
+	sourceConfig, err := google.ConfigFromJSON(b, youtube.YoutubeReadonlyScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
-	sourceClient := getClient(ctx, config, "source")
-	targetClient := getClient(ctx, config, "target")
-	sourceService, err := youtube.New(sourceClient)
-	targetService, err := youtube.New(targetClient)
+
+	// If modifying these scopes, delete your previously saved credentials
+	// at ~/.credentials/target.json
+	targetConfig, err := google.ConfigFromJSON(b, youtube.YoutubeScope)
+
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+
+	sourceClient := getClient(ctx, sourceConfig, "source")
+	targetClient := getClient(ctx, targetConfig, "target")
+
+	sourceService, err := youtube.NewService(ctx, option.WithHTTPClient(sourceClient))
+
+	if err != nil {
+		log.Fatalf("Unable to get source youtube account: %v", err)
+	}
+
+	targetService, err := youtube.NewService(ctx, option.WithHTTPClient(targetClient))
+
+	if err != nil {
+		log.Fatalf("Unable to get target youtube account: %v", err)
+	}
 
 	handleError(err, "Error creating YouTube client")
 
-	mySubscriptions(ctx, targetService, []string{"snippet", "contentDetails"})
+	sourceChannels, err := mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
 
-	mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
+	if err != nil {
+		//log.Fatalf("Unable to list source channels: %v", err)
+	}
+
+	for _, channel := range sourceChannels {
+		fmt.Printf("Adding channel %s\n", channel.Snippet.Title)
+
+		call := targetService.Subscriptions.Insert([]string{"snippet", "contentDetails"}, channel)
+		_, err := call.Do()
+
+		if err == nil {
+			fmt.Printf("Successfully subscribed to channel: %s", channel.Snippet.Title)
+		} else {
+			fmt.Printf("Unable to add channel: %v\n", err)
+		}
+	}
 }
