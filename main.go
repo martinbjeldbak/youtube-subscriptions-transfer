@@ -119,6 +119,30 @@ func getClient(ctx context.Context, config *oauth2.Config, name string) *http.Cl
 	return config.Client(ctx, tok)
 }
 
+type ChannelImportStatus struct {
+	Channel  Channel
+	Imported bool
+}
+
+func getService(ctx context.Context, kind string, clientSecret []byte) *youtube.Service {
+
+	// If modifying these scopes, delete your previously saved credentials
+	// at ~/.credentials/source.json
+	config, err := google.ConfigFromJSON(clientSecret, youtube.YoutubeReadonlyScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+	client := getClient(ctx, config, kind)
+
+	service, err := youtube.NewService(ctx, option.WithHTTPClient(client))
+
+	if err != nil {
+		log.Fatalf("Unable to get source youtube account: %v", err)
+	}
+
+	return service
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -127,42 +151,15 @@ func main() {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	// If modifying these scopes, delete your previously saved credentials
-	// at ~/.credentials/source.json
-	sourceConfig, err := google.ConfigFromJSON(b, youtube.YoutubeReadonlyScope)
-	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
-	}
-
-	// If modifying these scopes, delete your previously saved credentials
-	// at ~/.credentials/target.json
-	targetConfig, err := google.ConfigFromJSON(b, youtube.YoutubeScope)
-
-	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
-	}
-
-	sourceClient := getClient(ctx, sourceConfig, "source")
-	targetClient := getClient(ctx, targetConfig, "target")
-
-	sourceService, err := youtube.NewService(ctx, option.WithHTTPClient(sourceClient))
-
-	if err != nil {
-		log.Fatalf("Unable to get source youtube account: %v", err)
-	}
-
-	targetService, err := youtube.NewService(ctx, option.WithHTTPClient(targetClient))
-
-	if err != nil {
-		log.Fatalf("Unable to get target youtube account: %v", err)
-	}
+	sourceService := getService(ctx, "source", b)
+	targetService := getService(ctx, "target", b)
 
 	handleError(err, "Error creating YouTube client")
 
 	sourceChannels, err := mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
 
 	if err != nil {
-		//log.Fatalf("Unable to list source channels: %v", err)
+		log.Fatalf("Unable to list source channels: %v", err)
 	}
 
 	for _, channel := range sourceChannels {
