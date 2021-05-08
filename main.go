@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -17,12 +18,6 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
 )
-
-type Channel struct {
-	id          string
-	title       string
-	description string
-}
 
 func handleError(err error, message string) {
 	if message == "" {
@@ -120,14 +115,13 @@ func getClient(ctx context.Context, config *oauth2.Config, name string) *http.Cl
 }
 
 type ChannelImportStatus struct {
-	Channel  Channel
+	Channel  *youtube.Subscription
 	Imported bool
 }
 
 func getService(ctx context.Context, kind string, clientSecret []byte) *youtube.Service {
-
 	// If modifying these scopes, delete your previously saved credentials
-	// at ~/.credentials/source.json
+	// at ~/.credentials/kind.json
 	config, err := google.ConfigFromJSON(clientSecret, youtube.YoutubeReadonlyScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
@@ -146,32 +140,75 @@ func getService(ctx context.Context, kind string, clientSecret []byte) *youtube.
 func main() {
 	ctx := context.Background()
 
-	b, err := ioutil.ReadFile("client_secret.json")
+	clientSecret, err := ioutil.ReadFile("client_secret.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	sourceService := getService(ctx, "source", b)
-	targetService := getService(ctx, "target", b)
+	sourceService := getService(ctx, "source", clientSecret)
+	targetService := getService(ctx, "target", clientSecret)
 
 	handleError(err, "Error creating YouTube client")
 
-	sourceChannels, err := mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
+	channelStatuses := make([]ChannelImportStatus, 100)
 
-	if err != nil {
-		log.Fatalf("Unable to list source channels: %v", err)
-	}
+	// Find existing or create new channelStatuses
+	if file, err := os.Open("importStatus.gob"); err == nil {
+		fmt.Println("Encoded file exists, decoding into channelStatuses")
+		decoder := gob.NewDecoder(file)
 
-	for _, channel := range sourceChannels {
-		fmt.Printf("Adding channel %s\n", channel.Snippet.Title)
+		channelStatuses = make([]ChannelImportStatus, 100, 250)
+		decoder.Decode(&channelStatuses)
 
-		call := targetService.Subscriptions.Insert([]string{"snippet", "contentDetails"}, channel)
-		_, err := call.Do()
+		defer file.Close()
+	} else {
+		fmt.Println("Encoded file doesnt exist, fetching subscriptions")
+		sourceChannels, err := mySubscriptions(ctx, sourceService, []string{"snippet", "contentDetails"})
 
-		if err == nil {
-			fmt.Printf("Successfully subscribed to channel: %s", channel.Snippet.Title)
-		} else {
-			fmt.Printf("Unable to add channel: %v\n", err)
+		if err != nil {
+			log.Fatalf("Unable to list source channels: %v", err)
+		}
+
+		channelStatuses = make([]ChannelImportStatus, 100, len(sourceChannels))
+
+		for index, channel := range sourceChannels {
+			channelStatuses[index] = ChannelImportStatus{channel, false}
 		}
 	}
+
+	// Import the unimported channels 1 by 1
+	for _, channelStatus := range channelStatuses {
+		channel := channelStatus.Channel
+
+		if channelStatus.Imported {
+			fmt.Printf("Channel %s already imported, skipping\n", channel.Snippet.Title)
+		} else {
+			fmt.Printf("Adding channel %s\n", channel.Snippet.Title)
+
+			call := targetService.Subscriptions.Insert([]string{"snippet", "contentDetails"}, channel)
+			_, err := call.Do()
+
+			if err == nil {
+				fmt.Printf("Successfully subscribed to channel: %s", channel.Snippet.Title)
+				channelStatus.Imported = true
+			} else {
+				fmt.Printf("Unable to add channel: %v\n", err)
+			}
+		}
+
+	}
+
+	// Write status to file
+	encodeFile, err := os.Create("importStatus.gob")
+
+	if err != nil {
+		panic(err)
+	}
+
+	encoder := gob.NewEncoder(encodeFile)
+
+	if err := encoder.Encode(channelStatuses); err != nil {
+		panic(err)
+	}
+	encodeFile.Close()
 }
