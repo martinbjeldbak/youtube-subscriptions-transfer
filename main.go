@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -150,14 +151,13 @@ func main() {
 
 	handleError(err, "Error creating YouTube client")
 
-	channelStatuses := make([]ChannelImportStatus, 100)
+	channelStatuses := make([]ChannelImportStatus, 0)
 
 	// Find existing or create new channelStatuses
 	if file, err := os.Open("importStatus.gob"); err == nil {
 		fmt.Println("Encoded file exists, decoding into channelStatuses")
 		decoder := gob.NewDecoder(file)
 
-		channelStatuses = make([]ChannelImportStatus, 100, 250)
 		decoder.Decode(&channelStatuses)
 
 		defer file.Close()
@@ -169,14 +169,14 @@ func main() {
 			log.Fatalf("Unable to list source channels: %v", err)
 		}
 
-		channelStatuses = make([]ChannelImportStatus, 100, len(sourceChannels))
+		fmt.Println("Importing into array")
 
-		for index, channel := range sourceChannels {
-			channelStatuses[index] = ChannelImportStatus{channel, false}
+		for _, channel := range sourceChannels {
+			channelStatuses = append(channelStatuses, ChannelImportStatus{channel, false})
 		}
 	}
 
-	// Import the unimported channels 1 by 1
+	fmt.Println("Import the unimported channels 1 by 1")
 	for _, channelStatus := range channelStatuses {
 		channel := channelStatus.Channel
 
@@ -192,7 +192,12 @@ func main() {
 				fmt.Printf("Successfully subscribed to channel: %s", channel.Snippet.Title)
 				channelStatus.Imported = true
 			} else {
-				fmt.Printf("Unable to add channel: %v\n", err)
+				if strings.HasPrefix(err.Error(), "googleapi: Error 403: The request cannot be completed because you have exceeded your") {
+					fmt.Printf("Unable to add channel: %v\n", err)
+				} else {
+					// TODO: mark as imported if already subscribed
+					fmt.Printf("Unable to add channel: %v\n", err)
+				}
 			}
 		}
 
