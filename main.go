@@ -120,10 +120,10 @@ type ChannelImportStatus struct {
 	Imported bool
 }
 
-func getService(ctx context.Context, kind string, clientSecret []byte) *youtube.Service {
+func getService(ctx context.Context, kind string, clientSecret []byte, scope ...string) *youtube.Service {
 	// If modifying these scopes, delete your previously saved credentials
 	// at ~/.credentials/kind.json
-	config, err := google.ConfigFromJSON(clientSecret, youtube.YoutubeReadonlyScope)
+	config, err := google.ConfigFromJSON(clientSecret, scope...)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
@@ -146,8 +146,8 @@ func main() {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	sourceService := getService(ctx, "source", clientSecret)
-	targetService := getService(ctx, "target", clientSecret)
+	sourceService := getService(ctx, "source", clientSecret, youtube.YoutubeReadonlyScope)
+	targetService := getService(ctx, "target", clientSecret, youtube.YoutubeScope)
 
 	handleError(err, "Error creating YouTube client")
 
@@ -176,7 +176,7 @@ func main() {
 		}
 	}
 
-	fmt.Println("Import the unimported channels 1 by 1")
+	fmt.Printf("Importing up to %v unimported channels 1 by 1\n", len(channelStatuses))
 	for _, channelStatus := range channelStatuses {
 		channel := channelStatus.Channel
 
@@ -189,7 +189,7 @@ func main() {
 			_, err := call.Do()
 
 			if err == nil {
-				fmt.Printf("Successfully subscribed to channel: %s", channel.Snippet.Title)
+				fmt.Printf("Successfully subscribed to channel: %s\n", channel.Snippet.Title)
 				channelStatus.Imported = true
 			} else {
 				if strings.HasPrefix(err.Error(), "googleapi: Error 403: The request cannot be completed because you have exceeded your") {
