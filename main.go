@@ -183,7 +183,7 @@ func main() {
 		if channelStatus.Imported {
 			fmt.Printf("Channel %s already imported, skipping\n", channel.Snippet.Title)
 		} else {
-			fmt.Printf("Adding channel %s\n", channel.Snippet.Title)
+			fmt.Printf("Attempting to add channel %s\n", channel.Snippet.Title)
 
 			call := targetService.Subscriptions.Insert([]string{"snippet", "contentDetails"}, channel)
 			_, err := call.Do()
@@ -192,11 +192,16 @@ func main() {
 				fmt.Printf("Successfully subscribed to channel: %s\n", channel.Snippet.Title)
 				channelStatus.Imported = true
 			} else {
-				if strings.HasPrefix(err.Error(), "googleapi: Error 403: The request cannot be completed because you have exceeded your") {
-					fmt.Printf("Unable to add channel: %v\n", err)
+				if strings.HasSuffix(err.Error(), "subscriptionForbidden") {
+					fmt.Printf("Previously subscribed to %v, marking as imported", channel.Snippet.Title)
+
+					channelStatus.Imported = true
+				} else if strings.HasSuffix(err.Error(), "quotaExceeded") {
+					fmt.Printf("Quota exceeded, can't import any more today. Stopping\n")
+					break
 				} else {
-					// TODO: mark as imported if already subscribed
-					fmt.Printf("Unable to add channel: %v\n", err)
+					fmt.Printf("Stopping with error: %v\n", err)
+					panic(err)
 				}
 			}
 		}
@@ -212,6 +217,7 @@ func main() {
 
 	encoder := gob.NewEncoder(encodeFile)
 
+	fmt.Println("Encoding channelStatuses to file")
 	if err := encoder.Encode(channelStatuses); err != nil {
 		panic(err)
 	}
