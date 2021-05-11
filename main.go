@@ -177,7 +177,7 @@ func main() {
 	}
 
 	fmt.Printf("Importing up to %v unimported channels 1 by 1\n", len(channelStatuses))
-	for _, channelStatus := range channelStatuses {
+	for index, channelStatus := range channelStatuses {
 		channel := channelStatus.Channel
 
 		if channelStatus.Imported {
@@ -190,12 +190,12 @@ func main() {
 
 			if err == nil {
 				fmt.Printf("Successfully subscribed to channel: %s\n", channel.Snippet.Title)
-				channelStatus.Imported = true
+				channelStatuses[index].Imported = true
 			} else {
 				if strings.HasSuffix(err.Error(), "subscriptionForbidden") {
 					fmt.Printf("Previously subscribed to %v, marking as imported", channel.Snippet.Title)
 
-					channelStatus.Imported = true
+					channelStatuses[index].Imported = true
 				} else if strings.HasSuffix(err.Error(), "quotaExceeded") {
 					fmt.Printf("Quota exceeded, can't import any more today. Stopping\n")
 					break
