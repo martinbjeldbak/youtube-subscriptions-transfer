@@ -138,6 +138,25 @@ func getService(ctx context.Context, kind string, clientSecret []byte, scope ...
 	return service
 }
 
+func writeStatusesToFile(channelStatuses []ChannelImportStatus) error {
+	// Write status to file
+	encodeFile, err := os.Create("importStatus.gob")
+
+	if err != nil {
+		return err
+	}
+
+	encoder := gob.NewEncoder(encodeFile)
+
+	fmt.Println("Encoding channelStatuses to file")
+	if err := encoder.Encode(channelStatuses); err != nil {
+		return err
+	}
+	encodeFile.Close()
+
+	return nil
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -147,7 +166,7 @@ func main() {
 	}
 
 	sourceService := getService(ctx, "source", clientSecret, youtube.YoutubeReadonlyScope)
-	targetService := getService(ctx, "target", clientSecret, youtube.YoutubeScope)
+	targetService := getService(ctx, "target", clientSecret, youtube.YoutubeForceSslScope)
 
 	handleError(err, "Error creating YouTube client")
 
@@ -174,52 +193,52 @@ func main() {
 		for _, channel := range sourceChannels {
 			channelStatuses = append(channelStatuses, ChannelImportStatus{channel, false})
 		}
+
+		if err := writeStatusesToFile(channelStatuses); err != nil {
+			panic(err)
+		}
 	}
 
 	fmt.Printf("Importing up to %v unimported channels 1 by 1\n", len(channelStatuses))
 	for index, channelStatus := range channelStatuses {
 		channel := channelStatus.Channel
 
-		if channelStatus.Imported {
-			fmt.Printf("Channel %s already imported, skipping\n", channel.Snippet.Title)
-		} else {
-			fmt.Printf("Attempting to add channel %s\n", channel.Snippet.Title)
-
-			call := targetService.Subscriptions.Insert([]string{"snippet", "contentDetails"}, channel)
-			_, err := call.Do()
-
-			if err == nil {
-				fmt.Printf("Successfully subscribed to channel: %s\n", channel.Snippet.Title)
-				channelStatuses[index].Imported = true
-			} else {
-				if strings.HasSuffix(err.Error(), "subscriptionForbidden") {
-					fmt.Printf("Previously subscribed to %v, marking as imported", channel.Snippet.Title)
-
-					channelStatuses[index].Imported = true
-				} else if strings.HasSuffix(err.Error(), "quotaExceeded") {
-					fmt.Printf("Quota exceeded, can't import any more today. Stopping\n")
-					break
-				} else {
-					fmt.Printf("Stopping with error: %v\n", err)
-					panic(err)
-				}
-			}
+		channelToSubscribeTo := &youtube.Subscription{
+			Snippet: &youtube.SubscriptionSnippet{
+				ResourceId: &youtube.ResourceId{
+					ChannelId: channel.Snippet.ResourceId.ChannelId,
+					Kind:      "youtube#channel",
+				},
+			},
 		}
 
+		fmt.Printf("Attempting to add channel #%v: %s: ", index, channel.Snippet.Title)
+
+		if channelStatus.Imported {
+			fmt.Printf("already imported, skipping\n")
+			continue
+		}
+
+		call := targetService.Subscriptions.Insert([]string{"snippet"}, channelToSubscribeTo)
+		_, err := call.Do()
+
+		if err == nil {
+			fmt.Printf("successfully subscribed to channel\n")
+			channelStatuses[index].Imported = true
+		} else {
+			if strings.HasSuffix(err.Error(), "subscriptionDuplicate") {
+				fmt.Printf("previously subscribed, marking as imported (%v)\n", err)
+
+				channelStatuses[index].Imported = true
+			} else if strings.HasSuffix(err.Error(), "quotaExceeded") {
+				fmt.Printf(" quota exceeded, can't import any more today. Stopping\n")
+				break
+			} else {
+				fmt.Printf("stopping with error: %v\n", err)
+				//panic(err)
+			}
+		}
 	}
 
-	// Write status to file
-	encodeFile, err := os.Create("importStatus.gob")
-
-	if err != nil {
-		panic(err)
-	}
-
-	encoder := gob.NewEncoder(encodeFile)
-
-	fmt.Println("Encoding channelStatuses to file")
-	if err := encoder.Encode(channelStatuses); err != nil {
-		panic(err)
-	}
-	encodeFile.Close()
+	writeStatusesToFile(channelStatuses)
 }
