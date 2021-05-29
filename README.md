@@ -1,5 +1,9 @@
 # YouTube Subscriptions Transfer Script
 
+DISCLAIMER: This is not widely tested and has been created for my (@martinbjeldbak's) use case only. Not guarenteed to work for you.
+
+## Description
+
 This Go script uses the YouTube API to transfer subscriptions from one YouTube account to another. Login access to both accounts and a Google Cloud account are required.
 
 By transfer, I mean it will make YouTube account `B` (target account) subscribe to the exact same channels as in YouTube account `A` (source account). There is no loss of data.
