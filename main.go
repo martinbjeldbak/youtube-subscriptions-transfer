@@ -212,7 +212,7 @@ func main() {
 			},
 		}
 
-		fmt.Printf("Attempting to add channel #%v/%v: %s: ", index, len(channelStatuses), channel.Snippet.Title)
+		fmt.Printf("Attempting to add channel #%v/%v: %s: ", index, len(channelStatuses)-1, channel.Snippet.Title)
 
 		if channelStatus.Imported {
 			fmt.Printf("already imported, skipping\n")
